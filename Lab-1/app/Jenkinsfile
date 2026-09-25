@@ -1,0 +1,90 @@
+// Jenkinsfile - Declarative Pipeline
+// -----------------------------------------------------------------------
+// Task 6: Implement a basic Jenkins CI/CD pipeline
+//   - The "Checkout" stage pulls the source code straight from the GitHub
+//     repository configured on the Jenkins job (Pipeline script from SCM).
+//   - The "triggers" block below polls GitHub for new commits and kicks
+//     off an automated build automatically (a GitHub webhook can replace
+//     this polling - see the setup guide for both options).
+//
+// Task 7: Create a Jenkinsfile defining pipeline stages
+//   - This is a DECLARATIVE pipeline (pipeline { ... } syntax) with three
+//     clearly separated stages: Build -> Test -> Deploy.
+// -----------------------------------------------------------------------
+
+pipeline {
+    agent any
+
+    options {
+        // Keep only the last 10 builds and timestamp the console log
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timestamps()
+    }
+
+    triggers {
+        // Polls the GitHub repo every 2 minutes for new commits and
+        // automatically triggers a build when a change is found.
+        // Replace with a GitHub webhook (see README) for instant, push-based
+        // triggering instead of polling.
+        pollSCM('H/2 * * * *')
+    }
+
+    environment {
+        APP_NAME    = 'lab1-devops-app'
+        APP_DIR     = 'Lab-1/app'
+        BUILD_LABEL = "${APP_NAME}-${env.BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                echo "Pulling source code for ${env.APP_NAME} from GitHub..."
+                checkout scm
+                bat 'git log -1 --oneline'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo "Building ${env.BUILD_LABEL}..."
+                dir("${env.APP_DIR}") {
+                    bat 'echo Build stage: verifying project files and toolchain'
+                    bat 'node -v'
+                    bat 'npm -v'
+                    bat 'if exist package-lock.json (npm ci) else (echo No lock file, skipping npm ci)'
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running automated tests...'
+                dir("${env.APP_DIR}") {
+                    bat 'npm test'
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo "Deploying ${env.BUILD_LABEL}..."
+                dir("${env.APP_DIR}") {
+                    bat 'call deploy.bat'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Pipeline completed successfully. ${env.BUILD_LABEL} deployed."
+        }
+        failure {
+            echo 'Pipeline failed. Check the console output above for the failing stage.'
+        }
+        always {
+            echo "Finished pipeline run #${env.BUILD_NUMBER} for ${env.APP_NAME}."
+        }
+    }
+}
